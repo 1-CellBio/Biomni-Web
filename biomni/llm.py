@@ -181,12 +181,23 @@ def get_llm(
             except Exception as e:
                 print(f"Note: Could not load ANTHROPIC_API_KEY from bash_profile: {e}")
 
-        return ChatAnthropic(
-            model=model,
-            temperature=temperature,
-            max_tokens=8192,
-            stop_sequences=stop_sequences,
-        )
+        kwargs = {
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": 8192,
+            "stop_sequences": stop_sequences,
+        }
+
+        # Support custom base_url for Anthropic-compatible API proxies
+        anthropic_base_url = base_url or os.getenv("ANTHROPIC_BASE_URL")
+        if anthropic_base_url:
+            kwargs["anthropic_api_url"] = anthropic_base_url
+
+        # Support custom API key passed as parameter
+        if api_key and api_key != "EMPTY":
+            kwargs["anthropic_api_key"] = api_key
+
+        return ChatAnthropic(**kwargs)
 
     elif source == "Gemini":
         # If you want to use ChatGoogleGenerativeAI, you need to pass the stop sequences upon invoking the model.

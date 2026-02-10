@@ -46,6 +46,9 @@ from biomni.utils import (
 if os.path.exists(".env"):
     load_dotenv(".env", override=False)
     print("Loaded environment variables from .env")
+    # Re-initialize default_config to pick up .env values
+    # (default_config was created at import time before .env was loaded)
+    default_config.__post_init__()
 
 
 class AgentState(TypedDict):
