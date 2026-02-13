@@ -1,21 +1,3 @@
-<p align="center">
-  <img src="./figs/biomni_logo.png" alt="Biomni Logo" width="600px" />
-</p>
-
-<p align="center">
-<a href="https://github.com/1-CellBio/Biomni-Web">
-<img src="https://img.shields.io/badge/GitHub-Biomni--Web-181717?style=for-the-badge&logo=github" alt="GitHub" />
-</a>
-<a href="https://biomni.stanford.edu">
-<img src="https://img.shields.io/badge/Try-Web%20UI-blue?style=for-the-badge" alt="Web UI" />
-</a>
-<a href="https://www.biorxiv.org/content/10.1101/2025.05.30.656746v1">
-<img src="https://img.shields.io/badge/Read-Paper-green?style=for-the-badge" alt="Paper" />
-</a>
-</p>
-
----
-
 > **About Biomni / 关于 Biomni**
 >
 > Biomni is a general-purpose biomedical AI agent. For full documentation (features, API, evaluation, etc.), see [README_EN.md](./README_EN.md).
@@ -270,7 +252,7 @@ Biomni 需要订阅大语言模型 Coding Plan。使用以下邀请码可享 **9
 
 ---
 
-## Cite Us / 引用
+## Cite / 引用
 
 ```bibtex
 @article{huang2025biomni,
