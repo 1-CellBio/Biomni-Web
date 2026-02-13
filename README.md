@@ -148,6 +148,14 @@ LLM_SOURCE=Custom
 ```
 </details>
 
+Biomni 需要订阅大语言模型 Coding Plan。使用以下邀请码可享 **9折优惠**。
+
+| Model | Provider | Link |
+|-------|----------|------|
+| GLM-5 | 智谱 AI | [Subscribe / 订阅](https://www.bigmodel.cn/glm-coding?ic=RCNVSLF7WF) |
+| MiniMax | MiniMax | [Subscribe / 订阅](https://platform.minimaxi.com/subscribe/coding-plan?code=2HXOCIB1gJ&source=link) |
+
+
 ---
 
 ### Step 8: Install Biomni with Web UI / 安装 Biomni 及 Web UI
@@ -246,10 +254,10 @@ Biomni requires an LLM Coding Plan subscription. Use the invite codes below for 
 
 Biomni 需要订阅大语言模型 Coding Plan。使用以下邀请码可享 **9折优惠**。
 
-| Model | Provider | Link | Invite Code / 邀请码 |
-|-------|----------|------|----------------------|
-| GLM-5 | 智谱 AI | [Subscribe / 订阅](https://www.bigmodel.cn/glm-coding?ic=RCNVSLF7WF) | `RCNVSLF7WF` |
-| MiniMax | MiniMax | [Subscribe / 订阅](https://platform.minimaxi.com/subscribe/coding-plan?code=2HXOCIB1gJ&source=link) | `2HXOCIB1gJ` |
+| Model | Provider | Link |
+|-------|----------|------|
+| GLM-5 | 智谱 AI | [Subscribe / 订阅](https://www.bigmodel.cn/glm-coding?ic=RCNVSLF7WF) |
+| MiniMax | MiniMax | [Subscribe / 订阅](https://platform.minimaxi.com/subscribe/coding-plan?code=2HXOCIB1gJ&source=link) |
 
 ---
 
