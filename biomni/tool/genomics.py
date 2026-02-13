@@ -805,16 +805,33 @@ def create_scvi_embeddings_scRNA(adata_filename, batch_key, label_key, data_dir)
     except ImportError:
         return "Please install scvi-tools: pip install scvi-tools"
 
+    import torch
+
     steps = []
+
+    # ---- Detect best available accelerator ----
+    accelerator = "cpu"
+    train_kwargs: dict = {}
+    if torch.cuda.is_available():
+        accelerator = "gpu"
+        steps.append("GPU detected (CUDA) – using GPU acceleration")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        accelerator = "mps"
+        # MPS benefits from larger batch size on unified memory
+        train_kwargs["batch_size"] = 512
+        steps.append("Apple Silicon GPU detected (MPS) – using MPS acceleration")
+    else:
+        steps.append("No GPU detected – training on CPU (this may be slow)")
+
     steps.append(f"Loading AnnData from {data_dir}/{adata_filename}")
     adata = sc.read_h5ad(f"{data_dir}/{adata_filename}")
 
     steps.append(f"Setting up AnnData for scVI with batch key: {batch_key}")
     scvi.model.SCVI.setup_anndata(adata, batch_key=batch_key)
 
-    steps.append("Creating and training scVI model")
+    steps.append(f"Creating and training scVI model (accelerator={accelerator})")
     model = scvi.model.SCVI(adata)
-    model.train()
+    model.train(accelerator=accelerator, **train_kwargs)
 
     steps.append("Generating latent representation using scVI")
     adata.obsm["X_scVI"] = model.get_latent_representation()
@@ -826,8 +843,8 @@ def create_scvi_embeddings_scRNA(adata_filename, batch_key, label_key, data_dir)
         labels_key=label_key,
         unlabeled_category="Unknown",
     )
-    steps.append("Training scANVI model")
-    lvae.train()
+    steps.append(f"Training scANVI model (accelerator={accelerator})")
+    lvae.train(accelerator=accelerator, **train_kwargs)
 
     steps.append("Generating latent representation using scANVI")
     adata.obsm["X_scANVI"] = lvae.get_latent_representation(adata)

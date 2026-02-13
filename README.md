@@ -49,10 +49,10 @@ then install the biomni official pip package:
 pip install biomni --upgrade
 ```
 
-For the latest update, install from the github source version, or do:
+For the latest update, install from the GitHub source version:
 
 ```bash
-pip install git+https://github.com/snap-stanford/Biomni.git@main
+pip install git+https://github.com/1-CellBio/Biomni-Web.git@main
 ```
 
 Lastly, configure your API keys using one of the following methods:
@@ -163,9 +163,72 @@ This is useful for:
 - Cases where you only need specific tools that don't require datalake files
 If you plan on using Azure for your model, always prefix the model name with azure- (e.g. llm='azure-gpt-4o').
 
+### Custom Web UI (Recommended)
+
+Biomni-Web includes a feature-rich custom Web UI built with React + FastAPI, featuring real-time streaming, multi-session support, an execution plan viewer, and a results file browser with image previews.
+
+<p align="center">
+  <img src="./figs/customUI.png" alt="Biomni Custom Web UI" width="800px" />
+</p>
+
+**Quick Start — CLI (recommended):**
+
+```bash
+# Make sure biomni is installed with web dependencies
+pip install -e ".[web]"
+
+# Launch with one command
+biomni-web
+```
+
+The interface will be available at `http://localhost:7860`
+
+**CLI Options:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | `7860` | Port to bind to |
+| `--host` | `0.0.0.0` | Host/IP to bind to |
+| `--path` | `None` | Data path for the agent (overrides `BIOMNI_DATA_PATH`) |
+| `--llm` | `None` | LLM model name |
+| `--source` | `None` | LLM source provider |
+
+**Examples:**
+
+```bash
+# Use a specific model and data path
+biomni-web --llm glm-4-plus --source Custom --path ./data
+
+# Bind to a specific port
+biomni-web --port 8080
+
+# Localhost only
+biomni-web --host 127.0.0.1
+```
+
+**Alternative — Python API:**
+
+```python
+from biomni.agent import A1
+
+agent = A1(path='./data', llm='claude-sonnet-4-20250514')
+agent.launch_web_demo()
+```
+
+**Features:**
+- Real-time SSE streaming of agent reasoning, code execution, and results
+- Multi-session management with persistent history
+- Interactive plan viewer with subtask progress tracking
+- File browser with image preview and folder navigation
+- Sandboxed per-session workspace for generated files
+- Resizable panel layout
+- One-click actionable suggestions and option cards
+
+---
+
 ### Gradio Interface
 
-Launch an interactive web UI for Biomni:
+Launch a simpler interactive web UI using Gradio:
 
 ```python
 from biomni.agent import A1
@@ -396,7 +459,9 @@ More to come!
 
 ## 🌐 Web Interface
 
-Experience Biomni through our no-code web interface at **[biomni.stanford.edu](https://biomni.stanford.edu)**.
+**Local deployment:** Launch the custom Web UI locally with `biomni-web` — see [Custom Web UI](#custom-web-ui-recommended) above.
+
+**Online demo:** Experience Biomni through the no-code web interface at **[biomni.stanford.edu](https://biomni.stanford.edu)**.
 
 [![Watch the video](https://img.youtube.com/vi/E0BRvl23hLs/maxresdefault.jpg)](https://youtu.be/E0BRvl23hLs)
 

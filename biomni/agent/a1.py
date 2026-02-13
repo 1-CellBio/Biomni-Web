@@ -51,6 +51,20 @@ if os.path.exists(".env"):
     default_config.__post_init__()
 
 
+def _clean_residual_xml_tags(text: str) -> str:
+    """Remove trailing incomplete XML tags that may be left by stop_sequences.
+
+    When LLMs use stop_sequences like '</execute>' or '</solution>', sometimes
+    a partial closing tag (e.g. '</execute' without the final '>') is left at
+    the end of the output.  This helper strips such residuals.
+    """
+    # Remove trailing incomplete closing tags like  </execute  or  </solution
+    text = re.sub(r'</(?:execute|solution|observe|observation|think)\s*$', '', text)
+    # Also remove any standalone orphan closing tags not part of a valid pair
+    # (e.g. a bare '</execute>' appended outside of an <execute> block)
+    return text
+
+
 class AgentState(TypedDict):
     messages: list[BaseMessage]
     next_step: str | None
@@ -1413,6 +1427,9 @@ Each library is listed with its description to help you understand its functiona
                 # Fallback to string conversion for legacy content
                 msg = str(content)
 
+            # Clean up any residual incomplete XML tags left by stop_sequences
+            msg = _clean_residual_xml_tags(msg)
+
             # Enhanced parsing for better OpenAI compatibility
             # Check for incomplete tags and fix them
             if "<execute>" in msg and "</execute>" not in msg:
@@ -2627,6 +2644,35 @@ Each library is listed with its description to help you understand its functiona
 
             return wrapper
 
+    def launch_web_demo(self, port=7860, host="0.0.0.0"):
+        """Launch the modern React-based Web UI for the A1 agent.
+
+        This starts a FastAPI server that serves a React frontend with
+        Plan/Results panels, image preview, and file download support.
+        The agent's streaming output is delivered via Server-Sent Events.
+
+        Args:
+            port: Port to bind to (default: 7860)
+            host: Host/IP to bind to (default: "0.0.0.0")
+
+        Example:
+            >>> agent = A1()
+            >>> agent.launch_web_demo()
+        """
+        try:
+            from biomni.web.server import create_app
+        except ImportError:
+            raise ImportError(
+                "Web UI dependencies are not installed. "
+                "Please install them with: pip install fastapi uvicorn sse-starlette"
+            ) from None
+
+        import uvicorn
+
+        app = create_app(self)
+        print(f"Launching Biomni Web UI on http://{host}:{port}")
+        uvicorn.run(app, host=host, port=port)
+
     def launch_gradio_demo(self, thread_id=42, share=False, server_name="0.0.0.0", require_verification=False):
         """Launch a full-featured Gradio UI for the A1 agent (adapted from codeact_copilot).
 
@@ -2668,6 +2714,67 @@ Each library is listed with its description to help you understand its functiona
                     gr.update(value="Incorrect access code. Please check your access code.", visible=True),
                 )
 
+        def _render_plan_markdown(plan_steps, active_index=None):
+            if not plan_steps:
+                return "### Plan\n\nNo plan parsed yet. Submit a task to generate one."
+            lines = ["### Plan", ""]
+            for idx, step in enumerate(plan_steps):
+                if step.get("done"):
+                    marker = "✅"
+                elif active_index == idx:
+                    marker = "🟡"
+                else:
+                    marker = "⬜"
+                lines.append(f"- {marker} {step['text']}")
+            return "\n".join(lines)
+
+        def _render_results_markdown(result_files, result_images):
+            lines = ["### Results", ""]
+            if not result_files:
+                lines.append("No output files yet.")
+                return "\n".join(lines)
+            lines.append(f"- Total files: {len(result_files)}")
+            lines.append(f"- Images: {len(result_images)}")
+            lines.append("")
+            lines.append("Recent files:")
+            for file_path in result_files[-8:]:
+                lines.append(f"- `{os.path.basename(file_path)}`")
+            return "\n".join(lines)
+
+        def _extract_plan_steps(text):
+            if not isinstance(text, str) or not text.strip():
+                return []
+            matches = re.findall(r"^\s*[-*]\s*\[([ xX])\]\s+(.+)$", text, flags=re.MULTILINE)
+            steps = []
+            for checked, label in matches:
+                label = label.strip()
+                if label:
+                    steps.append({"text": label, "done": checked.lower() == "x"})
+            return steps
+
+        def _resolve_abs_path(file_path):
+            if os.path.isabs(file_path) and os.path.exists(file_path):
+                return file_path
+            cwd_candidate = os.path.join(os.getcwd(), file_path)
+            if os.path.exists(cwd_candidate):
+                return cwd_candidate
+            if hasattr(self, "path") and self.path:
+                path_candidate = os.path.join(self.path, file_path)
+                if os.path.exists(path_candidate):
+                    return path_candidate
+            return None
+
+        def _extract_output_paths(observation):
+            matches = re.findall(r"(\S+?(?:\.png|\.jpg|\.jpeg|\.gif|\.bmp|\.webp|\.pdf))", observation)
+            valid_matches = []
+            for match in matches:
+                if match.startswith(("Warning:", "Error:")):
+                    continue
+                clean_match = match.strip("\"'").strip().rstrip(".,;:")
+                if clean_match and not clean_match.startswith("."):
+                    valid_matches.append(clean_match)
+            return valid_matches
+
         def generate_response(prompt_input, inner_history=None, main_history=None):
             if main_history is None:
                 main_history = []
@@ -2675,13 +2782,24 @@ Each library is listed with its description to help you understand its functiona
                 inner_history = []
             text_input = prompt_input.get("text", "")
             files = prompt_input.get("files", [])
+            plan_steps = []
+            active_plan_index = None
+            result_files = []
+            result_images = []
 
             self.main_history_copy += [{"role": "user", "content": text_input}]
             main_history.append(ChatMessage(role="user", content=text_input if text_input else "[Uploaded file]"))
 
             # Add "Executor is working on it" message
             main_history.append(ChatMessage(role="assistant", content="Executor is working on it 👉"))
-            yield inner_history, main_history
+            yield (
+                inner_history,
+                main_history,
+                _render_plan_markdown(plan_steps, active_plan_index),
+                _render_results_markdown(result_files, result_images),
+                result_images,
+                result_files if result_files else None,
+            )
 
             # Process uploaded files if any
             for file_info in files:
@@ -2715,7 +2833,14 @@ Each library is listed with its description to help you understand its functiona
                         content="Retrieving relevant tools, data lake items, and libraries...",
                     )
                 )
-                yield inner_history, main_history
+                yield (
+                    inner_history,
+                    main_history,
+                    _render_plan_markdown(plan_steps, active_plan_index),
+                    _render_results_markdown(result_files, result_images),
+                    result_images,
+                    result_files if result_files else None,
+                )
 
                 try:
                     selected_resources_names = self._prepare_resources_for_retrieval(text_input)
@@ -2730,7 +2855,14 @@ Each library is listed with its description to help you understand its functiona
                             content="Tool retrieval unavailable, proceeding with all tools...",
                         )
                     )
-                    yield inner_history, main_history
+                    yield (
+                        inner_history,
+                        main_history,
+                        _render_plan_markdown(plan_steps, active_plan_index),
+                        _render_results_markdown(result_files, result_images),
+                        result_images,
+                        result_files if result_files else None,
+                    )
 
             # Keep track of code execution messages
             code_execution_messages = []
@@ -2766,7 +2898,18 @@ Each library is listed with its description to help you understand its functiona
                                     metadata={"title": "🤔 Reasoning", "log": "Agent's thinking process"},
                                 )
                             )
-                            yield inner_history, main_history
+                            extracted_steps = _extract_plan_steps(thinking)
+                            if extracted_steps:
+                                plan_steps = extracted_steps
+                                active_plan_index = None
+                            yield (
+                                inner_history,
+                                main_history,
+                                _render_plan_markdown(plan_steps, active_plan_index),
+                                _render_results_markdown(result_files, result_images),
+                                result_images,
+                                result_files if result_files else None,
+                            )
 
                     # Check for solution tag
                     solution_match = re.search(r"<solution>(.*?)</solution>", message.content, re.DOTALL)
@@ -2781,7 +2924,18 @@ Each library is listed with its description to help you understand its functiona
                         )
                         self.main_history_copy += [{"role": "assistant", "content": solution}]
                         solution_found = True
-                        yield inner_history, main_history
+                        if plan_steps:
+                            for step in plan_steps:
+                                step["done"] = True
+                            active_plan_index = None
+                        yield (
+                            inner_history,
+                            main_history,
+                            _render_plan_markdown(plan_steps, active_plan_index),
+                            _render_results_markdown(result_files, result_images),
+                            result_images,
+                            result_files if result_files else None,
+                        )
 
                     # Check for execute tag
                     execute_match = re.search(r"<execute>(.*?)</execute>", message.content, re.DOTALL)
@@ -2795,6 +2949,9 @@ Each library is listed with its description to help you understand its functiona
                             language = "bash"
                             code = re.sub(r"^#!BASH|^#!CLI", "", code, count=1).strip()
 
+                        if plan_steps:
+                            active_plan_index = next((i for i, step in enumerate(plan_steps) if not step.get("done")), None)
+
                         code_msg = ChatMessage(
                             role="assistant",
                             content=f"##### Code: \n```{language}\n{code}\n```",
@@ -2807,7 +2964,14 @@ Each library is listed with its description to help you understand its functiona
                         )
                         inner_history.append(code_msg)
                         code_execution_messages.append(code_msg)
-                        yield inner_history, main_history
+                        yield (
+                            inner_history,
+                            main_history,
+                            _render_plan_markdown(plan_steps, active_plan_index),
+                            _render_results_markdown(result_files, result_images),
+                            result_images,
+                            result_files if result_files else None,
+                        )
 
                     # Check for observation
                     observation_match = re.search(r"<observation>(.*?)</observation>", message.content, re.DOTALL)
@@ -2839,19 +3003,21 @@ Each library is listed with its description to help you understand its functiona
                                 },
                             )
                         )
-                        yield inner_history, main_history
+                        if plan_steps and active_plan_index is not None and 0 <= active_plan_index < len(plan_steps):
+                            plan_steps[active_plan_index]["done"] = True
+                            active_plan_index = None
+                        yield (
+                            inner_history,
+                            main_history,
+                            _render_plan_markdown(plan_steps, active_plan_index),
+                            _render_results_markdown(result_files, result_images),
+                            result_images,
+                            result_files if result_files else None,
+                        )
 
                         # Check for file paths in the observation
                         if isinstance(observation, str) and any(ext in observation for ext in SUPPORTED_EXTENSIONS):
-                            matches = re.findall(r"(\S+?(?:\.png|\.jpg|\.jpeg|\.gif|\.bmp|\.webp|\.pdf))", observation)
-
-                            valid_matches = []
-                            for match in matches:
-                                if not (
-                                    match.startswith("Warning:") or match.startswith("Error:") or match.startswith("'")
-                                ):
-                                    if not match.startswith("."):
-                                        valid_matches.append(match)
+                            valid_matches = _extract_output_paths(observation)
 
                             if valid_matches:
                                 inner_history.append(
@@ -2863,39 +3029,40 @@ Each library is listed with its description to help you understand its functiona
                                 )
 
                                 for file_path in valid_matches:
-                                    file_path = file_path.strip("\"'").strip()
+                                    abs_path = _resolve_abs_path(file_path)
+                                    if not abs_path:
+                                        continue
 
-                                    abs_path = None
-                                    if os.path.isabs(file_path) and os.path.exists(file_path):
-                                        abs_path = file_path
-                                    elif os.path.exists(os.path.join(os.getcwd(), file_path)):
-                                        abs_path = os.path.join(os.getcwd(), file_path)
-                                    elif (
-                                        hasattr(self, "path")
-                                        and self.path
-                                        and os.path.exists(os.path.join(self.path, file_path))
-                                    ):
-                                        abs_path = os.path.join(self.path, file_path)
+                                    if abs_path not in result_files:
+                                        result_files.append(abs_path)
 
-                                    if abs_path:
-                                        if file_path.lower().endswith(".pdf"):
-                                            inner_history.append(
-                                                ChatMessage(
-                                                    role="assistant",
-                                                    content=f"Found PDF at: {abs_path}",
-                                                    metadata={"title": "📄 PDF File"},
-                                                )
+                                    if file_path.lower().endswith(".pdf"):
+                                        inner_history.append(
+                                            ChatMessage(
+                                                role="assistant",
+                                                content=f"Found PDF at: {abs_path}",
+                                                metadata={"title": "📄 PDF File"},
                                             )
-                                        else:
-                                            inner_history.append(
-                                                ChatMessage(
-                                                    role="assistant",
-                                                    content=gr.Image(abs_path),
-                                                    metadata={"title": "🖼️ Image Preview"},
-                                                )
+                                        )
+                                    else:
+                                        inner_history.append(
+                                            ChatMessage(
+                                                role="assistant",
+                                                content=gr.Image(abs_path),
+                                                metadata={"title": "🖼️ Image Preview"},
                                             )
+                                        )
+                                        if abs_path not in result_images:
+                                            result_images.append(abs_path)
 
-                                yield inner_history, main_history
+                                yield (
+                                    inner_history,
+                                    main_history,
+                                    _render_plan_markdown(plan_steps, active_plan_index),
+                                    _render_results_markdown(result_files, result_images),
+                                    result_images,
+                                    result_files if result_files else None,
+                                )
 
                 t = time()
 
@@ -2909,10 +3076,15 @@ Each library is listed with its description to help you understand its functiona
                         ChatMessage(role="assistant", content=solution, metadata={"title": "✅ Solution"})
                     )
                     self.main_history_copy += [{"role": "assistant", "content": solution}]
+                    if plan_steps:
+                        for step in plan_steps:
+                            step["done"] = True
+                        active_plan_index = None
                 else:
                     cleaned_content = re.sub(r"<execute>.*?</execute>", "", final_message, flags=re.DOTALL)
                     cleaned_content = re.sub(r"<observation>.*?</observation>", "", cleaned_content, flags=re.DOTALL)
                     cleaned_content = re.sub(r"\n\s*\n", "\n\n", cleaned_content)
+                    cleaned_content = _clean_residual_xml_tags(cleaned_content)
 
                     if cleaned_content.strip():
                         main_history.append(
@@ -2939,7 +3111,14 @@ Each library is listed with its description to help you understand its functiona
                     metadata={"title": "🔄 Complete"},
                 )
             )
-            yield inner_history, main_history
+            yield (
+                inner_history,
+                main_history,
+                _render_plan_markdown(plan_steps, active_plan_index),
+                _render_results_markdown(result_files, result_images),
+                result_images,
+                result_files if result_files else None,
+            )
 
         def like(data: gr.LikeData):
             print("User liked the response")
@@ -2966,36 +3145,45 @@ Each library is listed with its description to help you understand its functiona
             # Main interface
             with main_interface_container:
                 with gr.Row():
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=1, min_width=230):
+                        gr.Markdown("### Quick Tasks")
+                        gr.Markdown(
+                            f"- Active thread: `{thread_id}`\n"
+                            "- Start a new biomedical task or continue the current one.\n"
+                            "- Upload files in the input bar and they will be attached automatically."
+                        )
+                    with gr.Column(scale=2, min_width=520):
                         main_chatbot = gr.Chatbot(
                             label="Biomni A1 Agent",
                             type="messages",
-                            height=800,
+                            height=420,
                             show_copy_button=True,
                             show_share_button=True,
                         )
-                    with gr.Column(scale=1):
                         innerloop_chatbot = gr.Chatbot(
                             label="Biomni Executor",
                             type="messages",
-                            height=800,
+                            height=360,
                             show_copy_button=True,
                             show_share_button=True,
                         )
-
-                with gr.Row():
-                    prompt_input = gr.MultimodalTextbox(
-                        interactive=True,
-                        file_count="multiple",
-                        placeholder="Ask something or upload a file...",
-                        show_label=False,
-                    )
+                        prompt_input = gr.MultimodalTextbox(
+                            interactive=True,
+                            file_count="multiple",
+                            placeholder="Ask something or upload a file...",
+                            show_label=False,
+                        )
+                    with gr.Column(scale=1, min_width=320):
+                        plan_panel = gr.Markdown("### Plan\n\nNo plan parsed yet. Submit a task to generate one.")
+                        results_panel = gr.Markdown("### Results\n\nNo output files yet.")
+                        results_gallery = gr.Gallery(label="Image Preview", height=260, preview=True)
+                        results_files = gr.File(label="Download Results", file_count="multiple", interactive=False)
 
                 # Bind submission
                 prompt_input.submit(
                     generate_response,
                     [prompt_input, innerloop_chatbot, main_chatbot],
-                    [innerloop_chatbot, main_chatbot],
+                    [innerloop_chatbot, main_chatbot, plan_panel, results_panel, results_gallery, results_files],
                 ).then(lambda: gr.MultimodalTextbox(value=None), None, [prompt_input])
                 main_chatbot.like(like)
 

@@ -15,12 +15,16 @@ authors = [
 requires-python = ">=3.11"
 dependencies = ["pydantic", "langchain", "python-dotenv"]
 
+[project.scripts]
+biomni-web = "biomni.web.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/snap-stanford/biomni"
 Repository = "https://github.com/snap-stanford/biomni"
 
 [project.optional-dependencies]
 gradio = ["gradio>=5.0,<6.0"]
+web = ["fastapi>=0.115.0", "uvicorn>=0.32.0", "sse-starlette>=2.0.0"]
 
 [tool.setuptools]
 include-package-data = true
