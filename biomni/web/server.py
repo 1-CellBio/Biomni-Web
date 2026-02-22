@@ -662,7 +662,7 @@ def create_app(agent: A1) -> FastAPI:
                 conversation_state["messages"].append({"role": "user", "content": text_input})
 
                 inputs = {"messages": agent_messages, "next_step": None}
-                config = {"recursion_limit": 500, "configurable": {"thread_id": 42}}
+                config = {"recursion_limit": 500, "configurable": {"thread_id": sess["id"]}}
 
                 plan_steps: list[dict] = []
                 result_files: list[dict] = list(conversation_state["result_files"])
