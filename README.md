@@ -11,7 +11,7 @@
 ## Custom Web UI Preview / 自定义 Web UI 预览
 
 <p align="center">
-  <img src="./figs/customUI.png" alt="Biomni Custom Web UI" width="800px" />
+  <img src="./figs/customUI.png?v=2" alt="Biomni Custom Web UI" width="800px" />
 </p>
 
 ---

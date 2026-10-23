@@ -168,7 +168,7 @@ If you plan on using Azure for your model, always prefix the model name with azu
 Biomni-Web includes a feature-rich custom Web UI built with React + FastAPI, featuring real-time streaming, multi-session support, an execution plan viewer, and a results file browser with image previews.
 
 <p align="center">
-  <img src="./figs/customUI.png" alt="Biomni Custom Web UI" width="800px" />
+  <img src="./figs/customUI.png?v=2" alt="Biomni Custom Web UI" width="800px" />
 </p>
 
 **Quick Start — CLI (recommended):**
